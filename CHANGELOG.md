@@ -3,6 +3,25 @@
 All notable changes to BlazeCrawl Core. Format follows Keep a Changelog;
 versioning follows SemVer.
 
+## [0.1.2] — Distribution integrity repair
+
+### Fixed
+- Corrected BlazeCrawl Core runtime version reporting: `blazecrawl_core.__version__`,
+  `blazecrawl --version`, and `/health` now derive from the installed distribution
+  metadata and report the actual release version (the published `blazecrawl-core==0.1.1`
+  wheel incorrectly reported `0.1.0` at runtime).
+- Aligned the Node SDK and MCP `package-lock.json` versions with their package versions.
+- Strengthened the release-version consistency gate to verify all manifests, both Node
+  lockfiles (root and package-root), and the built core/SDK runtime versions, so this
+  class of version drift cannot recur.
+- Completed package distribution convergence across PyPI, npm, and GHCR.
+
+### Changed
+- npm publication is now OIDC Trusted Publishing only; the one-time v0.1.1 token
+  bootstrap path was removed.
+
+No intentional scrape/map/crawl API behavior change.
+
 ## [0.1.1] — Distribution preparation
 
 ### Changed

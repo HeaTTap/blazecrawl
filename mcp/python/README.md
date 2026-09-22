@@ -6,7 +6,7 @@ and `crawl` tools over stdio.
 ## Install
 
 ```bash
-pip install blazecrawl-mcp==0.1.1
+pip install blazecrawl-mcp==0.1.2
 ```
 
 ## Generic MCP client configuration
