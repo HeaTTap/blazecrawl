@@ -1,0 +1,217 @@
+name: Release
+
+# A release is only published from a reviewed tag on main. Ordinary CI remains
+# read-only and never receives registry publication permissions.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  verify-release:
+    name: Verify release tag and versions
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Verify tag targets main and matches all package versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Tag must be vX.Y.Z" >&2; exit 1 ;; esac
+          version="${tag#v}"
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"
+          python - "$version" <<'PY'
+          import json
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          expected = sys.argv[1]
+          toml_files = [Path("pyproject.toml"), Path("sdks/python/pyproject.toml"), Path("mcp/python/pyproject.toml")]
+          json_files = [Path("sdks/node/package.json"), Path("mcp/node/package.json")]
+          versions = {str(path): tomllib.loads(path.read_text())["project"]["version"] for path in toml_files}
+          versions.update({str(path): json.loads(path.read_text())["version"] for path in json_files})
+          mismatch = {path: version for path, version in versions.items() if version != expected}
+          if mismatch:
+              raise SystemExit(f"tag version {expected!r} does not match: {mismatch}")
+          PY
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+  build-python:
+    name: Build and test Python distributions
+    needs: verify-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Build, validate, and smoke-test exact Python artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in . sdks/python mcp/python; do
+            (cd "$package" && uv build && uvx twine check dist/*)
+          done
+          uv venv /tmp/blazecrawl-core-venv
+          /tmp/blazecrawl-core-venv/bin/pip install ./dist/*.whl
+          /tmp/blazecrawl-core-venv/bin/python -c 'import blazecrawl_core; print("core import OK")'
+          uv venv /tmp/blazecrawl-sdk-venv
+          /tmp/blazecrawl-sdk-venv/bin/pip install ./sdks/python/dist/*.whl
+          /tmp/blazecrawl-sdk-venv/bin/python -c 'import blazecrawl; assert blazecrawl.__version__ == "${{ needs.verify-release.outputs.version }}"'
+          uv venv /tmp/blazecrawl-mcp-venv
+          /tmp/blazecrawl-mcp-venv/bin/pip install ./mcp/python/dist/*.whl
+          /tmp/blazecrawl-mcp-venv/bin/blazecrawl-mcp --help >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: python-distributions
+          path: |
+            dist/*
+            sdks/python/dist/*
+            mcp/python/dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-node:
+    name: Build and test Node distributions
+    needs: verify-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+      - name: Verify npm trusted-publishing-compatible CLI
+        run: npm --version && npm version --json | node -e 'let d=""; process.stdin.on("data", c => d += c).on("end", () => { if (Number(JSON.parse(d).npm.split(".")[0]) < 11) process.exit(1) })'
+      - name: Test, pack, inspect, and install exact npm artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in sdks/node mcp/node; do
+            (cd "$package" && npm test --if-present && npm pack --json > pack.json)
+            node - "$package/pack.json" <<'NODE'
+          const fs = require("fs");
+          const pack = JSON.parse(fs.readFileSync(process.argv[2], "utf8"))[0];
+          const forbidden = /(^|\/)(\.env|\.npmrc|\.pypirc|id_rsa|.*\.(pem|key|crt))$/;
+          if (pack.files.some(({path}) => forbidden.test(path))) throw new Error(`forbidden tarball file: ${pack.files.map(x => x.path).find(p => forbidden.test(p))}`);
+          console.log(`${pack.name}@${pack.version}: ${pack.files.map(x => x.path).join(", ")}`);
+          NODE
+          done
+          mkdir /tmp/blazecrawl-npm-smoke && cd /tmp/blazecrawl-npm-smoke && npm init -y && npm install "$GITHUB_WORKSPACE/sdks/node/$(node -p "require('$GITHUB_WORKSPACE/sdks/node/pack.json')[0].filename")" "$GITHUB_WORKSPACE/mcp/node/$(node -p "require('$GITHUB_WORKSPACE/mcp/node/pack.json')[0].filename")"
+          node --input-type=module -e 'import { BlazeCrawl } from "@blazecrawl/sdk"; if (typeof BlazeCrawl !== "function") process.exit(1)'
+          ./node_modules/.bin/blazecrawl-mcp --help >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: node-distributions
+          path: |
+            sdks/node/*.tgz
+            mcp/node/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish Python distributions to PyPI
+    needs: [verify-release, build-python]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: python-distributions
+          path: artifacts
+      - name: Publish blazecrawl-core
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: artifacts/dist
+          verbose: true
+      - name: Publish blazecrawl SDK
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: artifacts/sdks/python/dist
+          verbose: true
+      - name: Publish blazecrawl MCP
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: artifacts/mcp/python/dist
+          verbose: true
+
+  publish-npm:
+    name: Publish Node distributions to npm
+    needs: [verify-release, build-node]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: node-distributions
+          path: artifacts
+      - name: Verify npm trusted-publishing-compatible CLI
+        run: npm --version && npm version --json | node -e 'let d=""; process.stdin.on("data", c => d += c).on("end", () => { if (Number(JSON.parse(d).npm.split(".")[0]) < 11) process.exit(1) })'
+      - name: Publish exact SDK tarball with provenance
+        working-directory: artifacts/sdks/node
+        run: npm publish ./*.tgz --access public --provenance
+      - name: Publish exact MCP tarball with provenance
+        working-directory: artifacts/mcp/node
+        run: npm publish ./*.tgz --access public --provenance
+
+  publish-ghcr:
+    name: Publish Linux amd64 image to GHCR
+    needs: verify-release
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.8.0
+        with:
+          images: ghcr.io/danishxsethi/blazecrawl
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/danishxsethi/blazecrawl
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.verify-release.outputs.version }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.18.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
