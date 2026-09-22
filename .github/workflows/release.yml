@@ -88,7 +88,13 @@ jobs:
           # guard for the v0.1.1 defect (installed 0.1.1 wheel reported 0.1.0).
           uv venv --seed /tmp/blazecrawl-core-venv
           /tmp/blazecrawl-core-venv/bin/pip install ./dist/*.whl
-          /tmp/blazecrawl-core-venv/bin/python -c 'import os, blazecrawl_core; assert blazecrawl_core.__version__ == os.environ["EXPECTED_VERSION"], f"core runtime {blazecrawl_core.__version__} != {os.environ[\"EXPECTED_VERSION\"]}"; print("core runtime version OK:", blazecrawl_core.__version__)'
+          /tmp/blazecrawl-core-venv/bin/python - <<'PY'
+          import os
+          import blazecrawl_core
+          expected = os.environ["EXPECTED_VERSION"]
+          assert blazecrawl_core.__version__ == expected, f"core runtime {blazecrawl_core.__version__} != {expected}"
+          print("core runtime version OK:", blazecrawl_core.__version__)
+          PY
           # CLI --version must report the release version.
           cli_version="$(/tmp/blazecrawl-core-venv/bin/blazecrawl --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
           [ "$cli_version" = "$EXPECTED_VERSION" ] || { echo "blazecrawl --version reported $cli_version, expected $EXPECTED_VERSION" >&2; exit 1; }
@@ -96,7 +102,13 @@ jobs:
           # SDK runtime version.
           uv venv --seed /tmp/blazecrawl-sdk-venv
           /tmp/blazecrawl-sdk-venv/bin/pip install ./sdks/python/dist/*.whl
-          /tmp/blazecrawl-sdk-venv/bin/python -c 'import os, blazecrawl; assert blazecrawl.__version__ == os.environ["EXPECTED_VERSION"], f"sdk runtime {blazecrawl.__version__} != {os.environ[\"EXPECTED_VERSION\"]}"; print("sdk runtime version OK:", blazecrawl.__version__)'
+          /tmp/blazecrawl-sdk-venv/bin/python - <<'PY'
+          import os
+          import blazecrawl
+          expected = os.environ["EXPECTED_VERSION"]
+          assert blazecrawl.__version__ == expected, f"sdk runtime {blazecrawl.__version__} != {expected}"
+          print("sdk runtime version OK:", blazecrawl.__version__)
+          PY
           # MCP CLI.
           uv venv --seed /tmp/blazecrawl-mcp-venv
           /tmp/blazecrawl-mcp-venv/bin/pip install ./mcp/python/dist/*.whl
