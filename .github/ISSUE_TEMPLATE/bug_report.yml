@@ -28,10 +28,25 @@ body:
   - type: input
     id: version
     attributes:
-      label: Version
-      placeholder: 0.1.0
+      label: BlazeCrawl version
+      description: Output of `blazecrawl --version` or the image tag.
+      placeholder: 0.1.2
+    validations:
+      required: true
   - type: dropdown
     id: deployment
     attributes:
-      label: Deployment
-      options: ["docker compose", "local pip", "other"]
+      label: Install method
+      options: ["docker (published image)", "docker compose (from source)", "pip (blazecrawl-core)", "other"]
+  - type: input
+    id: os
+    attributes:
+      label: OS / runtime
+      description: e.g. Ubuntu 24.04, Python 3.12, Node 22, Docker 27.
+      placeholder: Ubuntu 24.04, Python 3.12
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste logs with any API keys, tokens, or credentials removed.
+      render: text
