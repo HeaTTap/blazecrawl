@@ -231,7 +231,8 @@ blazecrawl map https://example.com
 blazecrawl crawl https://example.com --max-pages 25 --wait
 ```
 
-**MCP** (Claude Code, etc.)
+**MCP** — give an MCP-compatible AI client web-extraction tools while the
+crawler stays self-hosted on your machine:
 
 ```json
 {
@@ -243,6 +244,13 @@ blazecrawl crawl https://example.com --max-pages 25 --wait
   }
 }
 ```
+
+This generic config works with any MCP client that launches stdio servers. The
+`blazecrawl-mcp` command comes from `pip install blazecrawl-mcp` (Python) or
+`npx @blazecrawl/mcp` (Node) — see [mcp/python](mcp/python/README.md) and
+[mcp/node](mcp/node/README.md).
+
+More runnable snippets live in [examples/](examples/README.md).
 
 ## Architecture
 
