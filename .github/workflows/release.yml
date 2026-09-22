@@ -66,13 +66,13 @@ jobs:
           for package in . sdks/python mcp/python; do
             (cd "$package" && uv build && uvx twine check dist/*)
           done
-          uv venv /tmp/blazecrawl-core-venv
+          uv venv --seed /tmp/blazecrawl-core-venv
           /tmp/blazecrawl-core-venv/bin/pip install ./dist/*.whl
           /tmp/blazecrawl-core-venv/bin/python -c 'import blazecrawl_core; print("core import OK")'
-          uv venv /tmp/blazecrawl-sdk-venv
+          uv venv --seed /tmp/blazecrawl-sdk-venv
           /tmp/blazecrawl-sdk-venv/bin/pip install ./sdks/python/dist/*.whl
           /tmp/blazecrawl-sdk-venv/bin/python -c 'import blazecrawl; assert blazecrawl.__version__ == "${{ needs.verify-release.outputs.version }}"'
-          uv venv /tmp/blazecrawl-mcp-venv
+          uv venv --seed /tmp/blazecrawl-mcp-venv
           /tmp/blazecrawl-mcp-venv/bin/pip install ./mcp/python/dist/*.whl
           /tmp/blazecrawl-mcp-venv/bin/blazecrawl-mcp --help >/dev/null
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -286,6 +286,7 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.4.0
         with:
           registry: ghcr.io
