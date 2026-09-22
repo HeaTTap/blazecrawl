@@ -1,8 +1,22 @@
 # BlazeCrawl Core
 
-**Security-first, self-hostable web-data engine.** Turn web pages into clean,
-LLM-ready Markdown and structured data via three endpoints: `/v1/scrape`,
-`/v1/crawl`, and `/v1/map`.
+**Security-first, self-hostable web extraction for developers and AI systems.**
+Turn web pages into clean, LLM-ready Markdown and structured data via three
+endpoints: `/v1/scrape`, `/v1/crawl`, and `/v1/map`.
+
+[![PyPI](https://img.shields.io/pypi/v/blazecrawl-core?label=blazecrawl-core)](https://pypi.org/project/blazecrawl-core/)
+[![npm](https://img.shields.io/npm/v/@blazecrawl/sdk?label=%40blazecrawl%2Fsdk)](https://www.npmjs.com/package/@blazecrawl/sdk)
+[![CI](https://github.com/danishxsethi/blazecrawl/actions/workflows/ci.yml/badge.svg)](https://github.com/danishxsethi/blazecrawl/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/pypi/pyversions/blazecrawl-core)](https://pypi.org/project/blazecrawl-core/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+**Try it in one command** (published Linux x86_64 image):
+
+```bash
+docker run --rm -p 127.0.0.1:8000:8000 ghcr.io/danishxsethi/blazecrawl:0.1.2
+```
+
+Then scrape any URL → clean Markdown. Full walkthrough in [Quickstart](#quickstart).
 
 BlazeCrawl Core is the **open-source engine**. It is built for people who want
 to run their own scraping infrastructure **without handing their URLs, traffic,
@@ -41,38 +55,64 @@ validates every returned address against a private/reserved denylist, pins the
 connection to the validated IP (so DNS can't be rebound between check and use),
 and re-validates every redirect hop. That posture is the point.
 
-## Docker
+## Why BlazeCrawl?
 
-For the v0.1.2 release and later, pull the published Linux x86_64 image:
+* **Self-hosted.** Requests, URLs, and credentials stay on your machine. No
+  account, no external service, no data leaves your infrastructure.
+* **Security-oriented outbound networking.** Every fetch — static or browser —
+  goes through one egress path that validates against SSRF, blocks
+  private/reserved destinations, resists DNS rebinding (resolve-once +
+  pin-at-connect), and intercepts browser subresource requests.
+* **Many integration surfaces, one engine.** HTTP API, CLI, Python SDK, Node
+  SDK, MCP server, and a Docker image — all backed by the same core.
+
+Compared to wiring it up yourself:
+
+| Capability | Raw `requests`/`httpx` | Raw Playwright | BlazeCrawl |
+|---|:---:|:---:|:---:|
+| Markdown extraction | manual | manual | built in |
+| Site crawl (BFS + robots) | manual | manual | built in |
+| Site map / URL discovery | manual | manual | built in |
+| HTTP API | custom | custom | built in |
+| JS browser rendering | no | yes | yes |
+| Outbound SSRF / DNS-rebinding controls | manual | manual | built in |
+| Python SDK | — | — | yes |
+| Node SDK | — | — | yes |
+| MCP server | — | — | yes |
+
+This table compares *approaches*, not other products; it reflects what
+BlazeCrawl provides out of the box versus assembling the pieces by hand.
+
+## Quickstart
+
+Two ways to run it. Both serve the API on `http://localhost:8000` (loopback
+only) and generate a local API key on first start.
+
+### Option A — published image (fastest)
 
 ```bash
-docker run --rm -p 127.0.0.1:8000:8000 -v blazecrawl-data:/data/blazecrawl ghcr.io/danishxsethi/blazecrawl:0.1.2
+docker run -d --name blazecrawl -p 127.0.0.1:8000:8000 \
+  -v blazecrawl-data:/data/blazecrawl \
+  ghcr.io/danishxsethi/blazecrawl:0.1.2
+
+# grab the auto-generated local API key (shown once)
+docker logs blazecrawl 2>&1 | grep "first run"
 ```
 
-The image is published only after its release tag passes artifact checks. Until
-that release is public, use the source Compose quickstart below.
-
-## Quickstart (Docker Compose from source)
+### Option B — Docker Compose from source
 
 Prerequisites: Docker + Docker Compose.
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/danishxsethi/blazecrawl.git
 cd blazecrawl
-docker compose up --build
-```
-
-The API listens on `http://localhost:8000` (loopback only). On first start it
-generates a local API key, writes it to the `api-state` volume
-(`/data/blazecrawl/api_key`, mode `0600`), and shows it once in the logs:
-
-```bash
+docker compose up --build -d
 docker compose logs api | grep "first run"
-# [blazecrawl] first run: generated local API key and wrote it to
-#   /data/blazecrawl/api_key (mode 0600). Key (shown once): blz_local_xxxxxxxx
 ```
 
-Restart the stack and the same key is reused silently.
+### Scrape
+
+Use the key from the logs (`blz_local_...`):
 
 ```bash
 curl -X POST http://localhost:8000/v1/scrape \
@@ -80,6 +120,8 @@ curl -X POST http://localhost:8000/v1/scrape \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com"}'
 ```
+
+The key is persisted to the data volume (mode `0600`) and reused on restart.
 
 > **Stable keys:** set your own key and it will never be persisted or printed:
 > `BLAZECRAWL_API_KEY=my-secret-key docker compose up`. To expose the API
@@ -226,7 +268,36 @@ Full details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Security model
 
-BlazeCrawl Core is designed to be safe to point at arbitrary URLs. Highlights:
+BlazeCrawl Core is designed to be safe to point at arbitrary URLs. Every
+outbound request — whether a fast static fetch or a full browser render — is
+forced through a single egress path that validates the destination *before* any
+bytes are sent.
+
+**Static path** (default for simple pages):
+
+```mermaid
+flowchart TD
+    A["User-supplied URL"] --> B["Validate URL scheme + syntax"]
+    B --> C["Resolve DNS once"]
+    C --> D["Validate EVERY returned IP<br/>against private/reserved denylist"]
+    D --> E["Pin connection to the validated IP"]
+    E --> F["Controlled outbound connection<br/>redirect hops re-validated"]
+```
+
+**Browser path** (JS-heavy pages): Chromium never talks to the network
+directly. Every subresource request is intercepted and routed through the same
+controls:
+
+```mermaid
+flowchart TD
+    A["Chromium page request"] --> B["BlazeCrawl egress guard<br/>intercepts every subresource"]
+    B --> C["Resolve + validate IP set"]
+    C --> D["Pin to validated socket"]
+    D --> E["Internet"]
+    B -. "blocked: private, loopback,<br/>metadata, downgrade" .-> X["Request denied"]
+```
+
+Highlights:
 
 * DNS-rebinding-resistant egress (resolve-once + pin-at-connect).
 * Private/loopback/link-local/cloud-metadata/IPv4-mapped-IPv6 blocked.
@@ -239,7 +310,7 @@ See [SECURITY.md](SECURITY.md) for the disclosure policy and
 
 ## Maturity
 
-`v0.1.0` — early release. The scrape/map/crawl engine, egress security, SDKs,
+`v0.1.x` — early release. The scrape/map/crawl engine, egress security, SDKs,
 CLI and MCP are functional and tested. This is **not yet** battle-hardened at
 large scale; please report issues. See [CHANGELOG.md](CHANGELOG.md) and the
 [roadmap](docs/ROADMAP.md).
