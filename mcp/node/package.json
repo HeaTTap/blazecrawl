@@ -1,8 +1,20 @@
 {
   "name": "@blazecrawl/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for BlazeCrawl Core (scrape/map/crawl tools).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danishxsethi/blazecrawl.git"
+  },
+  "homepage": "https://github.com/danishxsethi/blazecrawl#readme",
+  "bugs": {
+    "url": "https://github.com/danishxsethi/blazecrawl/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "./src/index.js",
   "bin": { "blazecrawl-mcp": "./src/index.js" },

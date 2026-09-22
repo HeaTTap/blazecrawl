@@ -1,11 +1,30 @@
-# @blazecrawl/sdk (Node.js)
+# @blazecrawl/sdk
+
+Node.js API client for a running BlazeCrawl Core server. Requires Node.js 18+.
+
+## Install
+
+```bash
+npm install @blazecrawl/sdk@0.1.1
+```
+
+## Authenticate and scrape
 
 ```js
 import { BlazeCrawl } from "@blazecrawl/sdk";
 
-const bc = new BlazeCrawl({ apiKey: "blz_local_..." });
-const doc = await bc.scrape("https://example.com");
-console.log(doc.markdown);
+const client = new BlazeCrawl({
+  apiKey: "blz_local_...",
+  baseUrl: "http://127.0.0.1:8000",
+});
+
+try {
+  const document = await client.scrape("https://example.com");
+  console.log(document.markdown);
+} catch (error) {
+  console.error("BlazeCrawl request failed:", error);
+}
 ```
 
-Zero runtime dependencies (uses global `fetch`, Node 18+).
+Use `map()` to discover URLs. `crawl()` starts a job; poll the returned job
+reference through the client until completion.

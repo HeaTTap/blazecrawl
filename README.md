@@ -41,7 +41,18 @@ validates every returned address against a private/reserved denylist, pins the
 connection to the validated IP (so DNS can't be rebound between check and use),
 and re-validates every redirect hop. That posture is the point.
 
-## Quickstart (Docker)
+## Docker
+
+For the v0.1.1 release and later, pull the published Linux x86_64 image:
+
+```bash
+docker run --rm -p 127.0.0.1:8000:8000 -v blazecrawl-data:/data/blazecrawl ghcr.io/danishxsethi/blazecrawl:0.1.1
+```
+
+The image is published only after its release tag passes artifact checks. Until
+that release is public, use the source Compose quickstart below.
+
+## Quickstart (Docker Compose from source)
 
 Prerequisites: Docker + Docker Compose.
 
@@ -127,6 +138,29 @@ curl -X POST http://localhost:8000/v1/crawl \
 # → {"job_id":"...","status_url":"/v1/crawl/..."}
 curl http://localhost:8000/v1/crawl/<job_id> -H "Authorization: Bearer $KEY"
 ```
+
+## Install SDKs and MCP integrations
+
+The following registry commands apply after v0.1.1 is published. Until then,
+install from this checkout as shown in the component READMEs.
+
+```bash
+# Python server / CLI
+pip install blazecrawl-core==0.1.1
+playwright install chromium
+
+# Python SDK or MCP server
+pip install blazecrawl==0.1.1
+pip install blazecrawl-mcp==0.1.1
+
+# Node SDK or MCP server (Node 18+)
+npm install @blazecrawl/sdk@0.1.1
+npm install @blazecrawl/mcp@0.1.1
+```
+
+`blazecrawl-core` starts the self-hosted server and provides the CLI.
+`blazecrawl` and `@blazecrawl/sdk` are API clients. The `*-mcp` packages expose
+BlazeCrawl tools to MCP-compatible clients over stdio.
 
 ## SDKs & CLI
 

@@ -3,6 +3,13 @@
 All notable changes to BlazeCrawl Core. Format follows Keep a Changelog;
 versioning follows SemVer.
 
+## [0.1.1] — Distribution preparation
+
+### Changed
+- Completed PyPI and npm registry metadata for the core package, SDKs, and MCP servers.
+- Added a tag-only, OIDC-based release workflow for PyPI, npm provenance, and GHCR publishing.
+- Added public-registry installation guidance. No intentional runtime API behavior change.
+
 ## [0.1.0] — RC1
 
 ### Added
