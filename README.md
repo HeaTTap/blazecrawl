@@ -141,10 +141,7 @@ curl http://localhost:8000/v1/crawl/<job_id> -H "Authorization: Bearer $KEY"
 
 ## Install SDKs and MCP integrations
 
-The Python and container packages are published for v0.1.2. The npm packages
-(`@blazecrawl/sdk`, `@blazecrawl/mcp`) are published at v0.1.2 following a
-one-time interactive bootstrap; until they are live, install the Node packages
-from this checkout as shown in the component READMEs.
+All packages are published for v0.1.2 across PyPI, npm, and GHCR.
 
 ```bash
 # Python server / CLI
