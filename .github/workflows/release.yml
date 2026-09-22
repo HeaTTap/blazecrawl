@@ -135,8 +135,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish-pypi:
-    name: Publish Python distributions to PyPI
+  publish-pypi-core:
+    name: Publish blazecrawl-core to PyPI
     needs: [verify-release, build-python]
     runs-on: ubuntu-latest
     environment: release
@@ -153,11 +153,39 @@ jobs:
         with:
           packages-dir: artifacts/dist
           verbose: true
+
+  publish-pypi-sdk:
+    name: Publish blazecrawl SDK to PyPI
+    needs: [verify-release, build-python]
+    runs-on: ubuntu-latest
+    environment: release-pypi-blazecrawl
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: python-distributions
+          path: artifacts
       - name: Publish blazecrawl SDK
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: artifacts/sdks/python/dist
           verbose: true
+
+  publish-pypi-mcp:
+    name: Publish blazecrawl MCP to PyPI
+    needs: [verify-release, build-python]
+    runs-on: ubuntu-latest
+    environment: release-pypi-mcp
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: python-distributions
+          path: artifacts
       - name: Publish blazecrawl MCP
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
@@ -181,7 +209,7 @@ jobs:
         with:
           name: node-distributions
           path: artifacts
-      - name: Verify npm trusted-publishing runtime
+      - name: Verify npm release runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -195,10 +223,32 @@ jobs:
             throw new Error(`npm ${process.argv[2]} is below required 11.5.1`);
           }
           NODE
+      # v0.1.1 one-time bootstrap: @blazecrawl/sdk and @blazecrawl/mcp do not yet
+      # exist on npm, so Trusted Publishers cannot be configured. A granular
+      # token (GitHub Actions secret NPM_TOKEN) authenticates this single
+      # bootstrap publication. The token is injected ONLY for version 0.1.1 and
+      # ONLY into this step. Future versions must use npm OIDC Trusted
+      # Publishing and will fail closed here until publishers are configured.
       - name: Publish or verify exact npm artifacts with provenance
         shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ needs.verify-release.outputs.version == '0.1.1' && secrets.NPM_TOKEN || '' }}
         run: |
           set -euo pipefail
+          release_version='${{ needs.verify-release.outputs.version }}'
+          if [ "$release_version" = "0.1.1" ]; then
+            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+              echo "v0.1.1 bootstrap requires the NPM_TOKEN secret, which is not configured." >&2
+              exit 1
+            fi
+            echo "npm authentication: one-time granular-token bootstrap (v0.1.1 only)"
+          else
+            # Future releases: no token fallback. npm Trusted Publishing (OIDC)
+            # must be configured on the packages by then; npm will use the
+            # GitHub OIDC token (id-token: write) for authentication.
+            unset NODE_AUTH_TOKEN
+            echo "npm authentication: OIDC Trusted Publishing (no token fallback)"
+          fi
           publish_or_verify() {
             local directory="$1"
             local tarball
@@ -219,7 +269,7 @@ jobs:
               printf 'Refusing release: %s@%s already exists with a different tarball SHA-1\n' "$name" "$version" >&2
               exit 1
             }
-            printf 'Verified pre-existing bootstrap artifact %s@%s (%s)\n' "$name" "$version" "$sha1"
+            printf 'already published - exact reviewed bytes verified: %s@%s (sha1 %s)\n' "$name" "$version" "$sha1"
           }
           publish_or_verify artifacts/sdks/node
           publish_or_verify artifacts/mcp/node
