@@ -24,6 +24,23 @@ governance lightweight and evolve it as the contributor base grows.
 
 * Maintainers aim to acknowledge new issues/PRs within **72 hours**.
 * Bugs are prioritized over features; security over everything.
+* Reproducible bugs get a minimal-reproduction confirmation and an accurate
+  label; we ask for a minimal repro rather than guessing.
+* PRs get a timely review where practical. Rejected changes come with an
+  explanation, and first-time contributors get help getting a PR over the line.
+* Security reports are handled privately per SECURITY.md and not disclosed
+  publicly before remediation.
+
+## Release cadence
+
+We do not commit to fixed-date releases. Quality over version churn:
+
+* **Patch** (`v0.1.x` → `v0.1.y`): when real fixes accumulate.
+* **Minor** (`v0.1` → `v0.2`): when meaningful backward-compatible
+  functionality lands.
+* **Major**: only for breaking contract changes.
+
+Releases follow the tag-gated, OIDC-based workflow in `.github/workflows/release.yml`.
 
 ## Becoming a contributor/committer
 

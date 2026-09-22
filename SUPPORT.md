@@ -4,8 +4,8 @@
 
 * **Bugs** — open a GitHub issue using the bug template.
 * **Feature requests** — open a GitHub issue using the feature template.
-* **Questions / discussion** — GitHub Discussions (if enabled) or a
-  well-scoped issue.
+* **Questions / discussion** — open a well-scoped issue labeled `question`.
+  (GitHub Discussions is not currently enabled for this repository.)
 
 ## What is a bug?
 
