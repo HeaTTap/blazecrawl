@@ -3,6 +3,7 @@
   "version": "0.1.2",
   "description": "MCP server for BlazeCrawl Core (scrape/map/crawl tools).",
   "license": "Apache-2.0",
+  "keywords": ["mcp", "model-context-protocol", "web-scraping", "crawler", "llm", "ai-agents", "self-hosted"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/danishxsethi/blazecrawl.git"

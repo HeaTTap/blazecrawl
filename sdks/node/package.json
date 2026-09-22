@@ -26,6 +26,6 @@
   "scripts": {
     "test": "node --test test/*.test.mjs"
   },
-  "keywords": ["web-scraping", "crawler", "markdown", "llm"],
+  "keywords": ["web-scraping", "crawler", "markdown", "llm", "sdk", "mcp", "self-hosted"],
   "files": ["src"]
 }
