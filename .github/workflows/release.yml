@@ -41,13 +41,28 @@ jobs:
           from pathlib import Path
 
           expected = sys.argv[1]
-          toml_files = [Path("pyproject.toml"), Path("sdks/python/pyproject.toml"), Path("mcp/python/pyproject.toml")]
-          json_files = [Path("sdks/node/package.json"), Path("mcp/node/package.json")]
-          versions = {str(path): tomllib.loads(path.read_text())["project"]["version"] for path in toml_files}
-          versions.update({str(path): json.loads(path.read_text())["version"] for path in json_files})
-          mismatch = {path: version for path, version in versions.items() if version != expected}
+          versions = {}
+
+          # Python package manifests (pyproject.toml project.version).
+          for path in [Path("pyproject.toml"), Path("sdks/python/pyproject.toml"), Path("mcp/python/pyproject.toml")]:
+              versions[str(path)] = tomllib.loads(path.read_text())["project"]["version"]
+
+          # Node package manifests (package.json version).
+          for path in [Path("sdks/node/package.json"), Path("mcp/node/package.json")]:
+              versions[str(path)] = json.loads(path.read_text())["version"]
+
+          # Node lockfiles: BOTH the lockfile root version and the
+          # packages[""] (package-root) version must match the release. This
+          # catches the v0.1.1 lockfile drift.
+          for path in [Path("sdks/node/package-lock.json"), Path("mcp/node/package-lock.json")]:
+              lock = json.loads(path.read_text())
+              versions[f"{path} (root)"] = lock["version"]
+              versions[f"{path} (packages[''])"] = lock["packages"][""]["version"]
+
+          mismatch = {path: v for path, v in versions.items() if v != expected}
           if mismatch:
               raise SystemExit(f"tag version {expected!r} does not match: {mismatch}")
+          print(f"all {len(versions)} manifest/lockfile versions match {expected}")
           PY
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
@@ -61,20 +76,49 @@ jobs:
       - run: uv python install ${{ env.PYTHON_VERSION }}
       - name: Build, validate, and smoke-test exact Python artifacts
         shell: bash
+        env:
+          EXPECTED_VERSION: ${{ needs.verify-release.outputs.version }}
         run: |
           set -euo pipefail
           for package in . sdks/python mcp/python; do
             (cd "$package" && uv build && uvx twine check dist/*)
           done
+          # Core: install the exact built wheel into a clean venv and assert the
+          # RUNTIME version matches the release version. This is the regression
+          # guard for the v0.1.1 defect (installed 0.1.1 wheel reported 0.1.0).
           uv venv --seed /tmp/blazecrawl-core-venv
           /tmp/blazecrawl-core-venv/bin/pip install ./dist/*.whl
-          /tmp/blazecrawl-core-venv/bin/python -c 'import blazecrawl_core; print("core import OK")'
+          /tmp/blazecrawl-core-venv/bin/python -c 'import os, blazecrawl_core; assert blazecrawl_core.__version__ == os.environ["EXPECTED_VERSION"], f"core runtime {blazecrawl_core.__version__} != {os.environ[\"EXPECTED_VERSION\"]}"; print("core runtime version OK:", blazecrawl_core.__version__)'
+          # CLI --version must report the release version.
+          cli_version="$(/tmp/blazecrawl-core-venv/bin/blazecrawl --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          [ "$cli_version" = "$EXPECTED_VERSION" ] || { echo "blazecrawl --version reported $cli_version, expected $EXPECTED_VERSION" >&2; exit 1; }
+          echo "blazecrawl --version OK: $cli_version"
+          # SDK runtime version.
           uv venv --seed /tmp/blazecrawl-sdk-venv
           /tmp/blazecrawl-sdk-venv/bin/pip install ./sdks/python/dist/*.whl
-          /tmp/blazecrawl-sdk-venv/bin/python -c 'import blazecrawl; assert blazecrawl.__version__ == "${{ needs.verify-release.outputs.version }}"'
+          /tmp/blazecrawl-sdk-venv/bin/python -c 'import os, blazecrawl; assert blazecrawl.__version__ == os.environ["EXPECTED_VERSION"], f"sdk runtime {blazecrawl.__version__} != {os.environ[\"EXPECTED_VERSION\"]}"; print("sdk runtime version OK:", blazecrawl.__version__)'
+          # MCP CLI.
           uv venv --seed /tmp/blazecrawl-mcp-venv
           /tmp/blazecrawl-mcp-venv/bin/pip install ./mcp/python/dist/*.whl
           /tmp/blazecrawl-mcp-venv/bin/blazecrawl-mcp --help >/dev/null
+          echo "mcp --help OK"
+          # Best-effort /health version proof from the installed artifact. The
+          # API warms a Playwright browser pool on startup, which needs browser
+          # binaries; install them and verify GET /health reports the release
+          # version. This closes the loop on the v0.1.1 /health=0.1.0 defect.
+          /tmp/blazecrawl-core-venv/bin/playwright install --with-deps chromium >/dev/null 2>&1 || /tmp/blazecrawl-core-venv/bin/playwright install chromium >/dev/null
+          BLAZECRAWL_PORT=18099 /tmp/blazecrawl-core-venv/bin/blazecrawl-server >/tmp/blazecrawl-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+          health_version=""
+          for _ in $(seq 1 60); do
+            health_version="$(curl -fsS http://127.0.0.1:18099/health 2>/dev/null | python -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)"
+            [ -n "$health_version" ] && break
+            sleep 1
+          done
+          kill $server_pid 2>/dev/null || true
+          [ "$health_version" = "$EXPECTED_VERSION" ] || { echo "/health reported version '$health_version', expected '$EXPECTED_VERSION'"; cat /tmp/blazecrawl-server.log; exit 1; }
+          echo "/health version OK: $health_version"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: python-distributions
@@ -223,32 +267,19 @@ jobs:
             throw new Error(`npm ${process.argv[2]} is below required 11.5.1`);
           }
           NODE
-      # v0.1.1 one-time bootstrap: @blazecrawl/sdk and @blazecrawl/mcp do not yet
-      # exist on npm, so Trusted Publishers cannot be configured. A granular
-      # token (GitHub Actions secret NPM_TOKEN) authenticates this single
-      # bootstrap publication. The token is injected ONLY for version 0.1.1 and
-      # ONLY into this step. Future versions must use npm OIDC Trusted
-      # Publishing and will fail closed here until publishers are configured.
+      # npm publication is OIDC Trusted Publishing ONLY. There is no token
+      # fallback: no NODE_AUTH_TOKEN is injected. The job holds id-token: write
+      # so npm can authenticate via GitHub OIDC once Trusted Publishers are
+      # configured on the packages. For a version already published by the
+      # one-time interactive owner bootstrap (e.g. v0.1.2), this job verifies
+      # the exact bytes (SHA-1 vs dist.shasum) and skips republish; it never
+      # overwrites an immutable version. If a version is absent and Trusted
+      # Publishing is not yet configured, npm fails closed.
       - name: Publish or verify exact npm artifacts with provenance
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ needs.verify-release.outputs.version == '0.1.1' && secrets.NPM_TOKEN || '' }}
         run: |
           set -euo pipefail
-          release_version='${{ needs.verify-release.outputs.version }}'
-          if [ "$release_version" = "0.1.1" ]; then
-            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-              echo "v0.1.1 bootstrap requires the NPM_TOKEN secret, which is not configured." >&2
-              exit 1
-            fi
-            echo "npm authentication: one-time granular-token bootstrap (v0.1.1 only)"
-          else
-            # Future releases: no token fallback. npm Trusted Publishing (OIDC)
-            # must be configured on the packages by then; npm will use the
-            # GitHub OIDC token (id-token: write) for authentication.
-            unset NODE_AUTH_TOKEN
-            echo "npm authentication: OIDC Trusted Publishing (no token fallback)"
-          fi
+          echo "npm authentication: OIDC Trusted Publishing (no token fallback)"
           publish_or_verify() {
             local directory="$1"
             local tarball
@@ -260,6 +291,8 @@ jobs:
             sha1="$(sha1sum "$tarball" | cut -d' ' -f1)"
             remote_version="$(npm view "$name@$version" version 2>/dev/null || true)"
             if [ -z "$remote_version" ]; then
+              # Absent: publish via OIDC Trusted Publishing (id-token). Fails
+              # closed if Trusted Publishers are not configured for the package.
               npm publish "$tarball" --access public --provenance
               return
             fi

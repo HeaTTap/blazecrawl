@@ -6,6 +6,15 @@ engine; managed infrastructure (hosted proxies, managed LLM extraction,
 enterprise tenancy) lives in the separate commercial BlazeCrawl Cloud product.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
+
+try:
+    # Single source of truth: the installed distribution metadata, which is
+    # generated from pyproject.toml at build time. This makes runtime version
+    # drift (the v0.1.1 defect) impossible for installed artifacts.
+    __version__ = _dist_version("blazecrawl-core")
+except PackageNotFoundError:  # running from a source tree without install
+    __version__ = "0.0.0+unknown"
 
 __all__ = ["__version__"]

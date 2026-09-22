@@ -5,7 +5,7 @@ Python API client for a running BlazeCrawl Core server.
 ## Install
 
 ```bash
-pip install blazecrawl==0.1.1
+pip install blazecrawl==0.1.2
 ```
 
 The server is separate. Run `blazecrawl-core` locally or point the client at a

@@ -6,7 +6,7 @@ and `crawl` tools over stdio. Requires Node.js 18+.
 ## Install
 
 ```bash
-npm install @blazecrawl/mcp@0.1.1
+npm install @blazecrawl/mcp@0.1.2
 ```
 
 ## Generic MCP client configuration
@@ -16,7 +16,7 @@ npm install @blazecrawl/mcp@0.1.1
   "mcpServers": {
     "blazecrawl": {
       "command": "npx",
-      "args": ["-y", "@blazecrawl/mcp@0.1.1"],
+      "args": ["-y", "@blazecrawl/mcp@0.1.2"],
       "env": {
         "BLAZECRAWL_API_URL": "http://127.0.0.1:8000",
         "BLAZECRAWL_API_KEY": "blz_local_..."

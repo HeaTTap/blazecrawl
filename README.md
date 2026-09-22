@@ -43,10 +43,10 @@ and re-validates every redirect hop. That posture is the point.
 
 ## Docker
 
-For the v0.1.1 release and later, pull the published Linux x86_64 image:
+For the v0.1.2 release and later, pull the published Linux x86_64 image:
 
 ```bash
-docker run --rm -p 127.0.0.1:8000:8000 -v blazecrawl-data:/data/blazecrawl ghcr.io/danishxsethi/blazecrawl:0.1.1
+docker run --rm -p 127.0.0.1:8000:8000 -v blazecrawl-data:/data/blazecrawl ghcr.io/danishxsethi/blazecrawl:0.1.2
 ```
 
 The image is published only after its release tag passes artifact checks. Until
@@ -141,21 +141,23 @@ curl http://localhost:8000/v1/crawl/<job_id> -H "Authorization: Bearer $KEY"
 
 ## Install SDKs and MCP integrations
 
-The following registry commands apply after v0.1.1 is published. Until then,
-install from this checkout as shown in the component READMEs.
+The Python and container packages are published for v0.1.2. The npm packages
+(`@blazecrawl/sdk`, `@blazecrawl/mcp`) are published at v0.1.2 following a
+one-time interactive bootstrap; until they are live, install the Node packages
+from this checkout as shown in the component READMEs.
 
 ```bash
 # Python server / CLI
-pip install blazecrawl-core==0.1.1
+pip install blazecrawl-core==0.1.2
 playwright install chromium
 
 # Python SDK or MCP server
-pip install blazecrawl==0.1.1
-pip install blazecrawl-mcp==0.1.1
+pip install blazecrawl==0.1.2
+pip install blazecrawl-mcp==0.1.2
 
 # Node SDK or MCP server (Node 18+)
-npm install @blazecrawl/sdk@0.1.1
-npm install @blazecrawl/mcp@0.1.1
+npm install @blazecrawl/sdk@0.1.2
+npm install @blazecrawl/mcp@0.1.2
 ```
 
 `blazecrawl-core` starts the self-hosted server and provides the CLI.

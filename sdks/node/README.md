@@ -5,7 +5,7 @@ Node.js API client for a running BlazeCrawl Core server. Requires Node.js 18+.
 ## Install
 
 ```bash
-npm install @blazecrawl/sdk@0.1.1
+npm install @blazecrawl/sdk@0.1.2
 ```
 
 ## Authenticate and scrape
