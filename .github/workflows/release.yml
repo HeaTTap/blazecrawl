@@ -12,7 +12,7 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22"
+  NODE_VERSION: "24"
 
 jobs:
   verify-release:
@@ -95,8 +95,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
-      - name: Verify npm trusted-publishing-compatible CLI
-        run: npm --version && npm version --json | node -e 'let d=""; process.stdin.on("data", c => d += c).on("end", () => { if (Number(JSON.parse(d).npm.split(".")[0]) < 11) process.exit(1) })'
+      - name: Verify npm trusted-publishing runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && (minor < 14 || (minor === 14 && patch < 0)))) process.exit(1)'
+          npm_version="$(npm --version)"
+          node - "$npm_version" <<'NODE'
+          const [major, minor, patch] = process.argv[2].split(".").map(Number);
+          if (![major, minor, patch].every(Number.isInteger) || major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) {
+            throw new Error(`npm ${process.argv[2]} is below required 11.5.1`);
+          }
+          NODE
       - name: Test, pack, inspect, and install exact npm artifacts
         shell: bash
         run: |
@@ -169,14 +181,48 @@ jobs:
         with:
           name: node-distributions
           path: artifacts
-      - name: Verify npm trusted-publishing-compatible CLI
-        run: npm --version && npm version --json | node -e 'let d=""; process.stdin.on("data", c => d += c).on("end", () => { if (Number(JSON.parse(d).npm.split(".")[0]) < 11) process.exit(1) })'
-      - name: Publish exact SDK tarball with provenance
-        working-directory: artifacts/sdks/node
-        run: npm publish ./*.tgz --access public --provenance
-      - name: Publish exact MCP tarball with provenance
-        working-directory: artifacts/mcp/node
-        run: npm publish ./*.tgz --access public --provenance
+      - name: Verify npm trusted-publishing runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && (minor < 14 || (minor === 14 && patch < 0)))) process.exit(1)'
+          npm_version="$(npm --version)"
+          node - "$npm_version" <<'NODE'
+          const [major, minor, patch] = process.argv[2].split(".").map(Number);
+          if (![major, minor, patch].every(Number.isInteger) || major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) {
+            throw new Error(`npm ${process.argv[2]} is below required 11.5.1`);
+          }
+          NODE
+      - name: Publish or verify exact npm artifacts with provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish_or_verify() {
+            local directory="$1"
+            local tarball
+            tarball="$(printf '%s\n' "$directory"/*.tgz)"
+            local name version sha1 remote_version remote_sha1 metadata
+            metadata="$(tar -xOf "$tarball" package/package.json)"
+            name="$(node -e 'let d=""; process.stdin.on("data", c => d += c).on("end", () => process.stdout.write(JSON.parse(d).name))' <<< "$metadata")"
+            version="$(node -e 'let d=""; process.stdin.on("data", c => d += c).on("end", () => process.stdout.write(JSON.parse(d).version))' <<< "$metadata")"
+            sha1="$(sha1sum "$tarball" | cut -d' ' -f1)"
+            remote_version="$(npm view "$name@$version" version 2>/dev/null || true)"
+            if [ -z "$remote_version" ]; then
+              npm publish "$tarball" --access public --provenance
+              return
+            fi
+            remote_sha1="$(npm view "$name@$version" dist.shasum 2>/dev/null || true)"
+            [ "$remote_version" = "$version" ]
+            [ "$remote_sha1" = "$sha1" ] || {
+              printf 'Refusing release: %s@%s already exists with a different tarball SHA-1\n' "$name" "$version" >&2
+              exit 1
+            }
+            printf 'Verified pre-existing bootstrap artifact %s@%s (%s)\n' "$name" "$version" "$sha1"
+          }
+          publish_or_verify artifacts/sdks/node
+          publish_or_verify artifacts/mcp/node
 
   publish-ghcr:
     name: Publish Linux amd64 image to GHCR
