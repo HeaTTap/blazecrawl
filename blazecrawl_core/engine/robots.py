@@ -19,6 +19,8 @@ from blazecrawl_core.network.ssrf import SSRFValidationError
 
 logger = get_logger(__name__)
 
+__all__ = ["clear_cache", "get_crawl_delay", "is_allowed"]
+
 _DEFAULT_UA = "*"
 _cache: dict[str, tuple[float, RobotFileParser | None]] = {}
 _CACHE_TTL = 900.0  # 15 minutes
@@ -29,6 +31,35 @@ def _robots_url(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}/robots.txt"
 
 
+def clear_cache() -> None:
+    """Clear the in-memory robots.txt cache."""
+    _cache.clear()
+
+
+async def _get_parser(url: str) -> RobotFileParser | None:
+    origin_key = urlsplit(url).netloc
+    now = time.time()
+
+    cached = _cache.get(origin_key)
+    if cached and (now - cached[0]) < _CACHE_TTL:
+        return cached[1]
+
+    rp = None
+    try:
+        resp = await safe_fetch(_robots_url(url), timeout_s=10.0, max_bytes=512 * 1024)
+        if resp.status_code == 200:
+            rp = RobotFileParser()
+            rp.parse(resp.text.splitlines())
+    except SSRFValidationError:
+        raise
+    except Exception as e:
+        logger.debug("robots.txt fetch failed; treating as allowed", error=str(e))
+        rp = None
+
+    _cache[origin_key] = (now, rp)
+    return rp
+
+
 async def is_allowed(url: str, user_agent: str = _DEFAULT_UA) -> bool:
     """Return True when robots.txt permits fetching ``url``.
 
@@ -36,29 +67,22 @@ async def is_allowed(url: str, user_agent: str = _DEFAULT_UA) -> bool:
     return True (standard crawler behaviour for unreachable robots), but we
     never *fetch* a URL whose retrieved robots.txt disallows it.
     """
-    origin_key = urlsplit(url).netloc
-    now = time.time()
-
-    cached = _cache.get(origin_key)
-    if cached and (now - cached[0]) < _CACHE_TTL:
-        rp = cached[1]
-    else:
-        rp = None
-        try:
-            resp = await safe_fetch(_robots_url(url), timeout_s=10.0, max_bytes=512 * 1024)
-            if resp.status_code == 200:
-                rp = RobotFileParser()
-                rp.parse(resp.text.splitlines())
-        except SSRFValidationError:
-            raise
-        except Exception as e:
-            logger.debug("robots.txt fetch failed; treating as allowed", error=str(e))
-            rp = None
-        _cache[origin_key] = (now, rp)
-
+    rp = await _get_parser(url)
     if rp is None:
         return True
     try:
         return rp.can_fetch(user_agent, url)
     except Exception:
         return True
+
+
+async def get_crawl_delay(url: str, user_agent: str = _DEFAULT_UA) -> float | None:
+    """Return the crawl-delay in seconds for user_agent if specified, else None."""
+    rp = await _get_parser(url)
+    if rp is None:
+        return None
+    try:
+        delay = rp.crawl_delay(user_agent)
+        return float(delay) if delay is not None else None
+    except Exception:
+        return None
