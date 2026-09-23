@@ -10,6 +10,14 @@ endpoints: `/v1/scrape`, `/v1/crawl`, and `/v1/map`.
 [![Python](https://img.shields.io/pypi/pyversions/blazecrawl-core)](https://pypi.org/project/blazecrawl-core/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
+<p align="center">
+  <img
+    src="docs/assets/blazecrawl-hero.gif"
+    alt="BlazeCrawl quickstart: run the container locally, check health, and scrape a page to clean Markdown"
+    width="900"
+  />
+</p>
+
 **Try it in one command** (published Linux x86_64 image):
 
 ```bash
@@ -181,6 +189,14 @@ curl -X POST http://localhost:8000/v1/crawl \
 curl http://localhost:8000/v1/crawl/<job_id> -H "Authorization: Bearer $KEY"
 ```
 
+<p align="center">
+  <img
+    src="docs/assets/blazecrawl-map-crawl.gif"
+    alt="BlazeCrawl map and crawl: discover a site's URLs, then crawl a bounded set of pages to Markdown with robots.txt respected"
+    width="900"
+  />
+</p>
+
 ## Install SDKs and MCP integrations
 
 All packages are published for v0.1.2 across PyPI, npm, and GHCR.
@@ -250,6 +266,14 @@ This generic config works with any MCP client that launches stdio servers. The
 `npx @blazecrawl/mcp` (Node) — see [mcp/python](mcp/python/README.md) and
 [mcp/node](mcp/node/README.md).
 
+<p align="center">
+  <img
+    src="docs/assets/blazecrawl-mcp.gif"
+    alt="BlazeCrawl over MCP: a client lists the scrape, map, and crawl tools and makes a real scrape tool call that returns Markdown — no third-party scraping service"
+    width="900"
+  />
+</p>
+
 More runnable snippets live in [examples/](examples/README.md).
 
 ## Architecture
@@ -280,6 +304,14 @@ BlazeCrawl Core is designed to be safe to point at arbitrary URLs. Every
 outbound request — whether a fast static fetch or a full browser render — is
 forced through a single egress path that validates the destination *before* any
 bytes are sent.
+
+<p align="center">
+  <img
+    src="docs/assets/blazecrawl-security.gif"
+    alt="BlazeCrawl egress security: every outbound URL is resolved, every resolved IP validated, and the connection pinned — a public URL is allowed while a loopback address is blocked"
+    width="900"
+  />
+</p>
 
 **Static path** (default for simple pages):
 
