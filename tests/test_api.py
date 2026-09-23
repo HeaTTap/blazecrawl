@@ -9,6 +9,7 @@ os.environ.setdefault("BLAZECRAWL_HOST", "127.0.0.1")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from blazecrawl_core import __version__  # noqa: E402
 from blazecrawl_core.api.main import app  # noqa: E402
 
 
@@ -21,11 +22,38 @@ def client():
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["mode"] == "oss"
+    data = r.json()
+    assert isinstance(data, dict)
+    assert data["status"] == "ok"
+    assert isinstance(data["status"], str)
+    assert data["version"] == __version__
+    assert isinstance(data["version"], str)
+    assert data["mode"] == "oss"
+    assert isinstance(data["mode"], str)
 
 
 def test_ready(client):
-    assert client.get("/ready").status_code == 200
+    r = client.get("/ready")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, dict)
+    assert data["ready"] is True
+    assert isinstance(data["ready"], bool)
+    assert isinstance(data["cache"], str)
+    assert data["cache"] in ("memory", "redis")
+    assert isinstance(data["queue"], str)
+    assert bool(data["queue"])
+
+    browser = data["browser"]
+    assert isinstance(browser, dict)
+    assert isinstance(browser["pool_size"], int)
+    assert isinstance(browser["active_contexts"], int)
+    assert isinstance(browser["idle_contexts"], int)
+    assert isinstance(browser["total_pages_created"], int)
+    assert isinstance(browser["total_errors"], int)
+    assert isinstance(browser["avg_page_creation_time_ms"], (int, float))
+    assert isinstance(browser["is_healthy"], bool)
+    assert isinstance(browser["is_shutdown"], bool)
 
 
 def test_scrape_requires_url(client):
